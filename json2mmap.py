@@ -2,6 +2,7 @@ import json
 from transformers import AutoModel, AutoTokenizer
 import torch
 import numpy as np
+from tqdm import tqdm
 
 keys_to_keep = ["tag1", "tag2", "title", "description"]
 all_item_ids = []
@@ -21,7 +22,7 @@ model = AutoModel.from_pretrained(model_name).to(device)
 
 # read json file
 with open(metadata_path) as mdf:
-    for line in mdf:
+    for line in tqdm(mdf.readlines(), "processing metadata jsonl "):
         # deal with NaN
         item_entry = json.loads(line.replace("NaN", '""'))
 
@@ -40,7 +41,7 @@ with open(metadata_path) as mdf:
 
 # write all item text to file
 with open(text_output_path, "w") as of:
-    for item_id, item_text in zip(all_item_ids, all_item_text):
+    for item_id, item_text in tqdm(zip(all_item_ids, all_item_text), "create raw text file: "):
         of.writelines(json.dumps(dict(zip(["item_id", "item_text"], [item_id, item_text]))) + "\n")
 
 
@@ -50,13 +51,13 @@ all_item_embs = np.asarray(all_item_embs)
 
 # create index map
 id_mmap = np.memmap(mmap_idx_path, mode="w+", dtype=all_item_ids.dtype, shape=(np.max(all_item_ids) + 1,))
-for i, item_id in enumerate(all_item_ids):
+for i, item_id in tqdm(enumerate(all_item_ids), "create index mmap "):
     id_mmap[item_id] = i
 id_mmap.flush()
 
 # create metadata map
 emb_mmap = np.memmap(mmap_emb_path, mode="w+", dtype=all_item_embs.dtype, shape=all_item_embs.shape)
-for i, item_emb in enumerate(all_item_embs):
+for i, item_emb in tqdm(enumerate(all_item_embs), "create embedding mmap "):
     emb_mmap[i] = item_emb
 emb_mmap.flush()
 
@@ -64,5 +65,4 @@ emb_mmap.flush()
 random_id = np.random.randint(len(all_item_ids))
 gt_array = np.asarray(all_item_embs[random_id])
 ret_array = emb_mmap[id_mmap[random_id]]
-print(gt_array, ret_array)
 assert np.array_equal(gt_array, ret_array, equal_nan=False)

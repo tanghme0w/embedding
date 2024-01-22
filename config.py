@@ -1,2 +1,2 @@
 
-metadata_path = "../../huangmian/all_news.json"
+metadata_path = "../../huangmian/all_news.jsonl"
