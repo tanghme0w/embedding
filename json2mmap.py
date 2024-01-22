@@ -15,11 +15,9 @@ mmap_emb_path = "data.mmap"
 mmap_idx_path = "idx.mmap"
 
 # init tokenizer and model
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
-if torch.cuda.is_available():
-    tokenizer.to('cuda')
-    model.to('cuda')
+model = AutoModel.from_pretrained(model_name).to(device)
 
 # read json file
 with open(metadata_path) as mdf:
@@ -35,7 +33,7 @@ with open(metadata_path) as mdf:
         all_item_text.append(item_text)
 
         # get embedding and convert to numpy
-        tokenized_text = tokenizer(item_text, return_tensors='pt', padding=True, max_length=512, truncation=True)
+        tokenized_text = tokenizer(item_text, return_tensors='pt', padding=True, max_length=512, truncation=True).to(device)
         text_embedding = model(**tokenized_text).pooler_output.detach().numpy()
         all_item_embs.append(dict(zip(["item_id", "embedding"], [item_entry['item_id'], text_embedding])))
 
