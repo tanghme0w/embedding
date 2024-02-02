@@ -1,9 +1,11 @@
 lines = []
 
-with open("metadata.jsonl") as fp:
+target_file = "metadata.jsonl"
+
+with open(target_file) as fp:
     for line in fp:
-        line = line.replace('"NaN"', 'NaN')
+        line = line.replace('"NaN"', 'NaN').replace('"null"', 'null')
         lines.append(line)
 
-with open("metadata.jsonl", "w") as fp:
+with open(target_file, "w") as fp:
     fp.writelines(lines)

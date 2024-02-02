@@ -11,9 +11,9 @@ all_item_embs = []
 
 model_name = "bert-base-uncased-local"
 metadata_path = "metadata.jsonl"
-text_output_path = "raw.jsonl"
-mmap_emb_path = "data.mmap"
-mmap_idx_path = "idx.mmap"
+text_output_path = "small_scale/raw.jsonl"
+mmap_emb_path = "small_scale/data.mmap"
+mmap_idx_path = "small_scale/idx.mmap"
 
 # init tokenizer and model
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -24,7 +24,7 @@ model = AutoModel.from_pretrained(model_name).to(device)
 with open(metadata_path) as mdf:
     for line in tqdm(mdf.readlines(), "processing metadata jsonl "):
         # deal with NaN
-        item_entry = json.loads(line.replace("NaN", '""'))
+        item_entry = json.loads(line.replace("NaN", '""').replace("null", '""'))
 
         # register item id
         all_item_ids.append(item_entry['item_id'])
@@ -35,7 +35,7 @@ with open(metadata_path) as mdf:
 
         # get embedding and convert to numpy
         tokenized_text = tokenizer(item_text, return_tensors='pt', padding=True, max_length=512, truncation=True).to(device)
-        text_embedding = model(**tokenized_text).pooler_output.detach().numpy()
+        text_embedding = model(**tokenized_text).pooler_output.cpu().detach().numpy()
         all_item_embs.append(dict(zip(["item_id", "embedding"], [item_entry['item_id'], text_embedding])))
 
 
@@ -46,23 +46,31 @@ with open(text_output_path, "w") as of:
 
 
 # generate mmap files
-all_item_ids = np.asarray(all_item_ids)
-all_item_embs = np.asarray(all_item_embs)
+ids = all_item_ids
+ids.insert(0, 0)
+item_ids_array = np.array(ids)
+
+emb = [item['embedding'][0] for item in all_item_embs]
+emb.insert(0, [0 for i in range(768)])
+item_embs_array = np.array(emb)
 
 # create index map
-id_mmap = np.memmap(mmap_idx_path, mode="w+", dtype=all_item_ids.dtype, shape=(np.max(all_item_ids) + 1,))
-for i, item_id in tqdm(enumerate(all_item_ids), "create index mmap "):
+id_mmap = np.memmap(mmap_idx_path + f'_{np.max(item_ids_array) + 1}', mode="w+", dtype=np.int32, shape=(np.max(item_ids_array) + 1,))
+for i, item_id in tqdm(enumerate(item_ids_array), "create index mmap "):
     id_mmap[item_id] = i
 id_mmap.flush()
 
 # create metadata map
-emb_mmap = np.memmap(mmap_emb_path, mode="w+", dtype=all_item_embs.dtype, shape=all_item_embs.shape)
-for i, item_emb in tqdm(enumerate(all_item_embs), "create embedding mmap "):
-    emb_mmap[i] = item_emb
+emb_mmap = np.memmap(mmap_emb_path + f'_{item_embs_array.shape[0]}_{item_embs_array.shape[1]}', mode="w+", dtype=np.float32, shape=item_embs_array.shape)
+for i, item_emb in tqdm(enumerate(item_embs_array), "create embedding mmap "):
+    emb_mmap[i][:] = item_emb[:]
 emb_mmap.flush()
 
 # verify results
-random_id = np.random.randint(len(all_item_ids))
-gt_array = np.asarray(all_item_embs[random_id])
-ret_array = emb_mmap[id_mmap[random_id]]
-assert np.array_equal(gt_array, ret_array, equal_nan=False)
+random_id = np.random.randint(1, len(all_item_ids))
+for item in all_item_embs:
+    if item['item_id'] == random_id:
+        gt_array = np.array(item['embedding'], dtype=np.float32)[0]
+        ret_array = emb_mmap[id_mmap[random_id]]
+        assert np.array_equal(gt_array, ret_array, equal_nan=False)
+        exit()
